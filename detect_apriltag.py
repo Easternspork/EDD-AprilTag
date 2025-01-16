@@ -1,37 +1,64 @@
-from picamera2 import Picamera2
-import cv2 as cv
+import cv2
 import numpy as np
 
-# Initialize Picamera2
-picam2 = Picamera2()
-camera_config = picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)})
-picam2.configure(camera_config)
-picam2.start()
+def detect_april_tags():
+    # Initialize the camera
+    cap = cv2.VideoCapture(0)  # Use the correct camera index
+    if not cap.isOpened():
+        print("Error: Could not open the camera.")
+        return
 
-# Initialize Aruco detection
-dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_APRILTAG_36h11)
-parameters = cv.aruco.DetectorParameters()
-detector = cv.aruco.ArucoDetector(dictionary, parameters)
+    # Define the AprilTag detector
+    detector = cv2.apriltag.Detector(cv2.apriltag.DetectorOptions(families="tag36h11"))
 
-try:
+    print("Press 'q' to quit.")
+
     while True:
-        # Capture a frame from the RPi camera
-        frame = picam2.capture_array()
-
-        # Detect AprilTags
-        corners, ids, _ = detector.detectMarkers(frame)
-
-        # Draw detected markers
-        if ids is not None:
-            cv.aruco.drawDetectedMarkers(frame, corners, ids)
-
-        # Display the frame with detected tags
-        cv.imshow("AprilTag Detection", frame)
-
-        # Exit on 'q' key
-        if cv.waitKey(1) & 0xFF == ord('q'):
+        # Capture a frame
+        ret, frame = cap.read()
+        if not ret:
+            print("Error: Failed to capture an image.")
             break
 
-finally:
-    picam2.stop()
-    cv.destroyAllWindows()
+        # Convert the frame to grayscale (AprilTags require grayscale images)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Detect AprilTags
+        results = detector.detect(gray)
+
+        # Loop through detected AprilTags
+        for result in results:
+            (ptA, ptB, ptC, ptD) = result.corners
+            ptA = tuple(map(int, ptA))
+            ptB = tuple(map(int, ptB))
+            ptC = tuple(map(int, ptC))
+            ptD = tuple(map(int, ptD))
+
+            # Draw the bounding box of the tag
+            cv2.line(frame, ptA, ptB, (0, 255, 0), 2)
+            cv2.line(frame, ptB, ptC, (0, 255, 0), 2)
+            cv2.line(frame, ptC, ptD, (0, 255, 0), 2)
+            cv2.line(frame, ptD, ptA, (0, 255, 0), 2)
+
+            # Draw the center (optional)
+            (cX, cY) = result.center
+            cv2.circle(frame, (int(cX), int(cY)), 5, (0, 0, 255), -1)
+
+            # Display the tag ID
+            tag_id = result.tag_id
+            cv2.putText(frame, f"ID: {tag_id}", (int(cX), int(cY) - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+        # Display the result
+        cv2.imshow("AprilTag Detection", frame)
+
+        # Exit when 'q' is pressed
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # Release the camera and close all windows
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    detect_april_tags()
